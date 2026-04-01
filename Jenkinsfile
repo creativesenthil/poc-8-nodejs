@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = 'poc8-nodejs'
+        DOCKERHUB_USER = 'senthilkumarsoundararajan'
     }
 
     stages {
@@ -17,19 +18,37 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar') {
-                    sh '''
-                        sonar-scanner \
-                        -Dsonar.projectKey=poc-8-nodejs \
-                        -Dsonar.sources=. \
-                        -Dsonar.exclusions=node_modules/**
-                    '''
+                    script {
+                        def scannerHome = tool 'sonar-scanner'
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.projectKey=poc-8-nodejs \
+                            -Dsonar.sources=. \
+                            -Dsonar.exclusions=node_modules/**
+                        """
+                    }
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
+                sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} ."
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER}
+                    """
+                }
             }
         }
 
@@ -41,7 +60,7 @@ pipeline {
                     docker run -d \
                         --name ${IMAGE_NAME} \
                         -p 3000:3000 \
-                        ${IMAGE_NAME}:${BUILD_NUMBER}
+                        ${DOCKERHUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER}
                 """
             }
         }
